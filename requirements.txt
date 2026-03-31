@@ -1,0 +1,11 @@
+# B站 API
+bilibili-api-python>=17.0.0
+
+# 音频下载
+yt-dlp>=2024.0.0
+
+# 音频转写（CPU，无字幕兜底）
+faster-whisper>=1.0.0
+
+# 工具
+python-dotenv>=1.0.0
