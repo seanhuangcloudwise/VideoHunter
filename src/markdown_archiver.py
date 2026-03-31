@@ -16,10 +16,45 @@ def _sanitize_dirname(name: str) -> str:
     return name.strip()[:80]
 
 
+def _sanitize_filename(author: str, title: str) -> str:
+    """生成安全的文件名 stem：[author] title"""
+    raw = f"[{author}] {title}"
+    safe = re.sub(r'[\\/:*?"<>|\0]', "_", raw)
+    return safe.strip()[:120]
+
+
 def _topic_dir(topic: str) -> Path:
     d = OUTPUT_DIR / _sanitize_dirname(topic)
     d.mkdir(parents=True, exist_ok=True)
     return d
+
+
+def _video_docs(topic: str):
+    """Yield all video .md files (excludes _index.md) under a topic dir."""
+    d = _topic_dir(topic)
+    return [p for p in d.glob("*.md") if p.name != "_index.md"]
+
+
+def is_video_processed(bvid: str, topic: str) -> bool:
+    """Return whether one BVID has already been archived under a topic."""
+    for md in _video_docs(topic):
+        text = md.read_text(encoding="utf-8")
+        fm = _parse_frontmatter(text)
+        if fm.get("bvid") == bvid:
+            return True
+    return False
+
+
+def list_processed_bvids(topic: str) -> set[str]:
+    """Return all archived BVIDs under a topic directory."""
+    result: set[str] = set()
+    for md in _video_docs(topic):
+        text = md.read_text(encoding="utf-8")
+        fm = _parse_frontmatter(text)
+        bvid = fm.get("bvid", "")
+        if bvid:
+            result.add(bvid)
+    return result
 
 
 def _to_hhmmss(seconds: float) -> str:
@@ -138,7 +173,9 @@ def write_video_doc(
     """
     d = _topic_dir(topic)
     bvid = meta.get("bvid", "unknown")
-    filepath = d / f"{bvid}.md"
+    author = meta.get("author", "")
+    title = meta.get("title", bvid)
+    filepath = d / f"{_sanitize_filename(author, title)}.md"
 
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     duration = meta.get("duration", 0)
@@ -186,7 +223,7 @@ analyzed_at: "{now}"
 keep_full_text: "{str(keep_text).lower()}"
 ---
 
-# {meta.get('title', bvid)}
+# [{meta.get('author', '')}] {meta.get('title', bvid)}
 
 > **UP主**: {meta.get('author', '')} | **时长**: {duration_str} | **播放**: {meta.get('view', meta.get('play', ''))}
 >
@@ -223,7 +260,7 @@ def update_topic_index(topic: str) -> Path:
     d = _topic_dir(topic)
     index_path = d / "_index.md"
 
-    video_docs = sorted(d.glob("BV*.md"))
+    video_docs = sorted(p for p in d.glob("*.md") if p.name != "_index.md")
     if not video_docs:
         index_path.write_text(f"# {topic}\n\n_暂无已解析视频。_\n", encoding="utf-8")
         return index_path

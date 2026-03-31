@@ -1,6 +1,6 @@
 ---
 description: "B站视频内容解析与归档 Agent。Use when: 分析B站视频、提取视频提纲、提取中心思想、B站视频搜索、视频内容归档到Markdown。Handles: bilibili video analysis, subtitle extraction, content outline, key ideas extraction, markdown archiving."
-tools: [execute, read, edit, search, todo]
+tools: [execute, read, edit, search, todo, vscode_askQuestions]
 ---
 
 # VideoHunter — B站视频内容解析 Agent
@@ -32,15 +32,59 @@ tools: [execute, read, edit, search, todo]
 
 #### Step 1: 确定视频目标
 
-**主题入口**:
-```bash
-cd /Volumes/work/Workspace/VideoHunter && python main.py search "<用户主题>" --limit 5
-```
-- 展示搜索结果给用户，包含标题、UP 主、时长、播放量
-- 让用户确认处理哪些视频（默认全部处理）
-- 记住用户的搜索主题，后续归档用
+**搜索结果 URL 入口**（用户给的是 `search.bilibili.com` 搜索页 URL）:
 
-**URL/BVID 入口**:
+**Step 1A — 拉取候选列表**
+```bash
+cd /Volumes/work/Workspace/VideoHunter && .venv/bin/python main.py list-candidates "<搜索结果URL>"
+```
+解析命令输出的 JSON，提取 `items` 数组，最多取前 20 条。
+
+**Step 1B — 弹出 Chat 内交互式勾选（必须调用 vscode_askQuestions）**
+立即调用 `vscode_askQuestions`，一次传入以下 **3 个问题**：
+
+问题 1 — 视频多选（必须）：
+- `header`: `选择要分析的视频`
+- `question`: `以下是搜索结果当页视频，前10条默认推荐，可多选：`
+- `multiSelect: true`
+- `options`: 逐条视频生成 option，字段规则（直接从 Step 1A 输出的 `items` 数组提取）：
+  - `label`: `items[i].label`（格式为 `[UP主] 标题`，如 `[灯哥开源] 手把手教做轮足机器人`）—— 这是 vscode_askQuestions 返回的选中值
+  - `description`: `items[i].description`（格式为 `BVID · 时长`，如 `BV1kz421B73V · 8:49`）
+  - `recommended: true`（序号 ≤ 10 的视频，即 `items[i].selected == true`）
+
+问题 2 — 归档主题名（若用户未在输入中指定）：
+- `header`: `归档主题名`
+- `question`: `请输入归档目录名（如：轮足机器人）`
+
+问题 3 — 完整文本保留：
+- `header`: `完整文本策略`
+- `question`: `是否在归档文档中保留完整字幕/转写文本？`
+- `options`: `[{label: "保留（默认）", recommended: true}, {label: "不保留"}]`
+
+**Step 1C — 用户确认后执行批处理**
+收到 `vscode_askQuestions` 回答后：
+- 「视频多选」答案中返回的是 `[UP主] 标题` 格式字符串（即 label 值）
+- 将这些值与 Step 1A 输出的 `items` 数组匹配（`items[i].label == 选中值`），提取对应的 `items[i].bvid`
+- 将提取到的所有 BVID 拼接为逗号列表
+- 根据「完整文本策略」附加 `--full-text` 或 `--no-full-text`
+- 执行：
+  ```bash
+  cd /Volumes/work/Workspace/VideoHunter && .venv/bin/python main.py batch-process "<搜索结果URL>" \
+    --topic "<主题名>" \
+    --selected "BV1xxx,BV2xxx,..." \
+    [--full-text | --no-full-text]
+  ```
+- 解析返回 JSON，按「输出规范」向用户汇报进度和最终结果
+
+---
+
+**关键词搜索入口**（用户给的是文字关键词，非 URL）:
+```bash
+cd /Volumes/work/Workspace/VideoHunter && .venv/bin/python main.py search "<用户主题>" --limit 10
+```
+解析结果后，同样调用 `vscode_askQuestions` 让用户勾选（格式与上方 Step 1B 相同）。记住用户的搜索主题，后续归档用。
+
+**直接 URL/BVID 入口**:
 - 直接进入 Step 2，主题名使用视频标题或让用户指定
 
 #### Step 2: 获取视频内容

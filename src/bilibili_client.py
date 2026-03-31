@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 import sys
+from urllib.parse import parse_qs, urlparse
 from typing import Any
 
 from bilibili_api import search, video, Credential
@@ -33,10 +34,56 @@ def extract_bvid(url_or_bvid: str) -> str | None:
 # ── 搜索视频 ──────────────────────────────────────────
 async def search_videos(keyword: str, limit: int = SEARCH_LIMIT) -> list[dict[str, Any]]:
     """按关键词搜索B站视频，返回精简元数据列表."""
+    return await search_videos_page(keyword=keyword, page=1, limit=limit)
+
+
+def parse_search_url(url: str) -> dict[str, Any]:
+    """解析 B站搜索 URL，提取查询参数.
+
+    Returns:
+        {
+            "keyword": str,
+            "order": str,
+            "duration": str,
+            "page": int,
+            "url": str,
+        }
+    """
+    parsed = urlparse(url)
+    is_search_domain = parsed.netloc in ("search.bilibili.com", "www.bilibili.com")
+    is_search_path = parsed.path in ("/all", "/", "") or parsed.path.startswith("/search")
+    if not is_search_domain or not is_search_path:
+        raise ValueError(f"不是有效的B站搜索结果URL: {url}")
+
+    query = parse_qs(parsed.query)
+    keyword = (query.get("keyword", [""])[0] or "").strip()
+    if not keyword:
+        raise ValueError(f"搜索URL缺少 keyword 参数: {url}")
+
+    page_raw = (query.get("p", ["1"])[0] or "1").strip()
+    try:
+        page = int(page_raw)
+    except ValueError as exc:
+        raise ValueError(f"搜索URL中的页码 p 非法: {page_raw}") from exc
+
+    if page < 1:
+        page = 1
+
+    return {
+        "keyword": keyword,
+        "order": (query.get("order", [""])[0] or "").strip(),
+        "duration": (query.get("duration", [""])[0] or "").strip(),
+        "page": page,
+        "url": url,
+    }
+
+
+async def search_videos_page(keyword: str, page: int = 1, limit: int = SEARCH_LIMIT) -> list[dict[str, Any]]:
+    """按关键词搜索指定页的视频，返回精简元数据列表."""
     resp = await search.search_by_type(
         keyword=keyword,
         search_type=search.SearchObjectType.VIDEO,
-        page=1,
+        page=page,
     )
     results = []
     for item in resp.get("result", [])[:limit]:
@@ -53,6 +100,16 @@ async def search_videos(keyword: str, limit: int = SEARCH_LIMIT) -> list[dict[st
             "url": f"https://www.bilibili.com/video/{item.get('bvid', '')}",
         })
     return results
+
+
+async def search_videos_from_url(search_url: str, limit: int = SEARCH_LIMIT) -> list[dict[str, Any]]:
+    """从 B站搜索 URL 拉取当前页视频列表。"""
+    parsed = parse_search_url(search_url)
+    return await search_videos_page(
+        keyword=parsed["keyword"],
+        page=parsed["page"],
+        limit=limit,
+    )
 
 
 # ── 获取视频详情 ──────────────────────────────────────

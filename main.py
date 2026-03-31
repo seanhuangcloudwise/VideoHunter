@@ -64,6 +64,38 @@ def cmd_transcribe(args):
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 
+def cmd_list_candidates(args):
+    """从搜索结果 URL 列出当页候选，并默认标记前 N 条为选中。"""
+    from src.batch.candidate_preview import build_search_url_preview
+
+    result = asyncio.run(
+        build_search_url_preview(
+            search_url=args.url,
+            default_top_n=args.default_top,
+            limit=args.limit,
+        )
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
+def cmd_batch_process(args):
+    """按可复用批处理引擎处理一个搜索结果 URL 的当页视频。"""
+    from src.batch_processor import run_search_url_batch
+
+    result = asyncio.run(
+        run_search_url_batch(
+            search_url=args.url,
+            topic=args.topic,
+            selected_arg=args.selected,
+            skip_existing=(not args.reprocess),
+            default_top_n=args.default_top,
+            limit=args.limit,
+            include_full_text=args.include_full_text,
+        )
+    )
+    print(json.dumps(result, ensure_ascii=False, indent=2))
+
+
 def main():
     parser = argparse.ArgumentParser(description="VideoHunter CLI")
     sub = parser.add_subparsers(dest="command")
@@ -83,6 +115,27 @@ def main():
     p_trans = sub.add_parser("transcribe", help="下载音频并转写")
     p_trans.add_argument("target", help="BVID 或 B站视频 URL")
     p_trans.set_defaults(func=cmd_transcribe)
+
+    # list-candidates
+    p_list = sub.add_parser("list-candidates", help="列出搜索URL当页候选，默认勾选前N条")
+    p_list.add_argument("url", help="B站搜索结果 URL")
+    p_list.add_argument("--default-top", type=int, default=10, help="默认勾选前N条")
+    p_list.add_argument("--limit", type=int, default=50, help="当页最多拉取多少条候选")
+    p_list.set_defaults(func=cmd_list_candidates)
+
+    # batch-process
+    p_batch = sub.add_parser("batch-process", help="按选中集合批量处理搜索URL当页视频")
+    p_batch.add_argument("url", help="B站搜索结果 URL")
+    p_batch.add_argument("--topic", required=True, help="归档主题名（必填）")
+    p_batch.add_argument("--selected", default=None, help="序号或BVID列表，如 '1,2,5' 或 'BVxxx,BVyyy'")
+    p_batch.add_argument("--default-top", type=int, default=10, help="未指定 --selected 时默认勾选前N条")
+    p_batch.add_argument("--limit", type=int, default=50, help="当页最多拉取多少条候选")
+    p_batch.add_argument("--reprocess", action="store_true", help="重新处理已归档视频")
+    group = p_batch.add_mutually_exclusive_group()
+    group.add_argument("--full-text", dest="include_full_text", action="store_true", help="归档中保留完整文本")
+    group.add_argument("--no-full-text", dest="include_full_text", action="store_false", help="归档中省略完整文本")
+    p_batch.set_defaults(include_full_text=None)
+    p_batch.set_defaults(func=cmd_batch_process)
 
     args = parser.parse_args()
     if not args.command:
