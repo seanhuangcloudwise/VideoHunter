@@ -2,10 +2,8 @@
 
 from __future__ import annotations
 
-import json
-import shutil
+import asyncio
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -18,45 +16,54 @@ def _ensure_tmp() -> Path:
 
 
 # ── 音频下载 ──────────────────────────────────────────
+async def _download_audio_async(bvid: str, out_m4a: Path) -> None:
+    """用 bilibili-api 获取音频流 URL，并通过内部 session 下载保存为 m4a。"""
+    from bilibili_api import video
+    from bilibili_api.utils.network import get_client
+    from .bilibili_client import _credential
+
+    _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+    v = video.Video(bvid=bvid, credential=_credential())
+    info = await v.get_info()
+    cid = info.get("cid")
+
+    url_data = await v.get_download_url(cid=cid)
+    dash = url_data.get("dash", {})
+    audio_tracks = dash.get("audio", []) or []
+    if not audio_tracks:
+        raise RuntimeError(f"未找到音频流: {bvid}")
+
+    best = sorted(audio_tracks, key=lambda x: x.get("bandwidth", 0), reverse=True)[0]
+    audio_url = best.get("baseUrl") or best.get("base_url") or (best.get("backupUrl") or [""])[0]
+    if not audio_url:
+        raise RuntimeError(f"音频流 URL 为空: {bvid}")
+
+    session = get_client().get_wrapped_session()
+    headers = {
+        "User-Agent": _UA,
+        "Referer": f"https://www.bilibili.com/video/{bvid}",
+    }
+    resp = await session.get(audio_url, headers=headers)
+    out_m4a.write_bytes(resp.content)
+
+
 def download_audio(bvid: str) -> Path:
-    """用 yt-dlp 下载视频音频轨到临时目录，返回 wav 文件路径."""
+    """下载视频音频轨到临时目录，返回音频文件路径（m4a）。
+
+    使用 bilibili-api 内部 session 下载音频流，无需 ffmpeg。
+    """
     tmp = _ensure_tmp()
-    out_path = tmp / f"{bvid}.wav"
+    out_wav = tmp / f"{bvid}.wav"
 
-    if out_path.exists():
-        return out_path
+    if out_wav.exists():
+        return out_wav
 
-    url = f"https://www.bilibili.com/video/{bvid}"
-    cmd = [
-        "yt-dlp",
-        "-x",
-        "--audio-format", "wav",
-        "-o", str(tmp / f"{bvid}.%(ext)s"),
-        "--no-playlist",
-        "--quiet",
-        url,
-    ]
-    subprocess.run(cmd, check=True)
-
-    # yt-dlp 可能生成中间格式再转换，找到最终 wav
-    if not out_path.exists():
-        # 查找同名任意音频文件
-        for f in tmp.glob(f"{bvid}.*"):
-            if f.suffix in (".wav", ".m4a", ".mp3", ".opus", ".webm"):
-                if f.suffix != ".wav":
-                    # ffmpeg 转换为 wav
-                    subprocess.run(
-                        ["ffmpeg", "-i", str(f), "-ar", "16000", "-ac", "1", str(out_path), "-y"],
-                        check=True, capture_output=True,
-                    )
-                    f.unlink()
-                else:
-                    out_path = f
-                break
-
-    if not out_path.exists():
-        raise FileNotFoundError(f"音频下载失败: {bvid}")
-    return out_path
+    # faster-whisper 底层用 av 库，直接支持 m4a，无需 ffmpeg 转码
+    out_m4a = tmp / f"{bvid}.m4a"
+    if not out_m4a.exists():
+        asyncio.run(_download_audio_async(bvid, out_m4a))
+    return out_m4a
 
 
 # ── Whisper 转写 ──────────────────────────────────────

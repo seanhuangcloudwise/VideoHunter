@@ -1,6 +1,20 @@
 # Changelog
 
-## [Unreleased]
+## [Unreleased] — 2026-04-01
+
+### Fixed
+- **字幕获取超时（bilibili_client.py）**：方式 2/3（dm/view、player API）及字幕 CDN 下载，全部改为复用 bilibili-api 内部 session（`get_client().get_wrapped_session()`），不再每次新建 `httpx.AsyncClient`。根因：macOS 系统代理（127.0.0.1:7897）导致新建 session 在 TLS 握手阶段挂起超时，而 bilibili-api 内部 session 已建立长连接故不受影响
+- **字幕 null 防护（bilibili_client.py）**：方式 2 dm/view 接口返回 `"subtitles": null` 时，`.get("subtitles", [])` 会返回 `None`，现在已加 `or []` 兜底，确保方式 3 正常 fallback
+- **音频下载彻底替换 yt-dlp（audio_transcriber.py）**：
+  - yt-dlp shebang 指向旧路径（`VedioHunter` → `VideoHunter` 迁移遗留）导致 `bad interpreter` 错误
+  - B 站对 yt-dlp 返回 HTTP 412，单独 SESSDATA 不足，还需 `buvid3` 等其他 cookie
+  - **改为直接使用 bilibili-api `get_download_url()` 获取音频流 URL，经内部 session 下载 m4a，faster-whisper 底层 av 库直接解码，无需 ffmpeg**
+- **归档文件名格式修复（markdown_archiver.py）**：新增 `_sanitize_filename(author, title)` 生成 `[UP主] 标题.md` 格式文件名；`is_video_processed` / `list_processed_bvids` 改为扫描 frontmatter（不再依赖文件名前缀 `BV*`）；`update_topic_index` 改为 glob `*.md` 排除 `_index.md`
+- **所有历史归档文件重命名**：18 个 `BV*.md` 文件按新格式重命名为 `[UP主] 标题.md`，各主题 `_index.md` 同步重建
+
+---
+
+## [2026-03-31]
 
 ### Added
 - **批量处理架构**：新增 `src/batch/` 可复用批处理包，采用 Provider/Selector/Processor/Reporter 四层 Protocol 接口设计

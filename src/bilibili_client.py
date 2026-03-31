@@ -140,8 +140,11 @@ async def fetch_subtitle(bvid: str, cid: int | None = None) -> dict[str, Any]:
     1. bilibili-api 内置 get_subtitle（CC字幕）
     2. dm/view 弹幕接口（AI 自动字幕，最可靠）
     3. player API 直取
+
+    所有自定义 HTTP 请求均复用 bilibili-api 内部 session，
+    避免因新建 httpx.AsyncClient 读取系统代理配置导致的 TLS 握手超时。
     """
-    import httpx
+    from bilibili_api.utils.network import get_client
 
     _UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
@@ -161,6 +164,9 @@ async def fetch_subtitle(bvid: str, cid: int | None = None) -> dict[str, Any]:
 
     subtitles = []
 
+    # 复用 bilibili-api 内部 session（已正确配置代理/timeout）
+    bili_session = get_client().get_wrapped_session()
+
     # ── 方式 1：bilibili-api 内置接口（CC字幕）──
     try:
         subtitle_info = await v.get_subtitle(cid)
@@ -177,12 +183,11 @@ async def fetch_subtitle(bvid: str, cid: int | None = None) -> dict[str, Any]:
             }
             if BILIBILI_SESSDATA:
                 headers["Cookie"] = f"SESSDATA={BILIBILI_SESSDATA}"
-            async with httpx.AsyncClient(follow_redirects=True) as client:
-                resp = await client.get(
-                    f"https://api.bilibili.com/x/v2/dm/view?type=1&oid={cid}&pid={aid}",
-                    headers=headers,
-                )
-                dm_data = resp.json()
+            resp = await bili_session.get(
+                f"https://api.bilibili.com/x/v2/dm/view?type=1&oid={cid}&pid={aid}",
+                headers=headers,
+            )
+            dm_data = resp.json()
             subtitles = dm_data.get("data", {}).get("subtitle", {}).get("subtitles", [])
         except Exception:
             pass
@@ -196,12 +201,11 @@ async def fetch_subtitle(bvid: str, cid: int | None = None) -> dict[str, Any]:
             }
             if BILIBILI_SESSDATA:
                 headers["Cookie"] = f"SESSDATA={BILIBILI_SESSDATA}"
-            async with httpx.AsyncClient() as client:
-                resp = await client.get(
-                    f"https://api.bilibili.com/x/player/v2?bvid={bvid}&cid={cid}",
-                    headers=headers,
-                )
-                pdata = resp.json()
+            resp = await bili_session.get(
+                f"https://api.bilibili.com/x/player/v2?bvid={bvid}&cid={cid}",
+                headers=headers,
+            )
+            pdata = resp.json()
             subtitles = pdata.get("data", {}).get("subtitle", {}).get("subtitles", [])
         except Exception:
             pass
@@ -230,9 +234,8 @@ async def fetch_subtitle(bvid: str, cid: int | None = None) -> dict[str, Any]:
     if BILIBILI_SESSDATA:
         headers["Cookie"] = f"SESSDATA={BILIBILI_SESSDATA}"
 
-    async with httpx.AsyncClient(follow_redirects=True) as client:
-        resp = await client.get(subtitle_url, headers=headers)
-        data = resp.json()
+    resp = await bili_session.get(subtitle_url, headers=headers)
+    data = resp.json()
 
     segments = []
     lines = []
