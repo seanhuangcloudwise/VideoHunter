@@ -34,7 +34,7 @@ tools: [execute, read, edit, search, todo]
 
 **主题入口**:
 ```bash
-cd /Volumes/work/Workspace/VedioHunter && python main.py search "<用户主题>" --limit 5
+cd /Volumes/work/Workspace/VideoHunter && python main.py search "<用户主题>" --limit 5
 ```
 - 展示搜索结果给用户，包含标题、UP 主、时长、播放量
 - 让用户确认处理哪些视频（默认全部处理）
@@ -47,7 +47,7 @@ cd /Volumes/work/Workspace/VedioHunter && python main.py search "<用户主题>"
 
 对每个目标视频执行：
 ```bash
-cd /Volumes/work/Workspace/VedioHunter && python main.py fetch "<BVID或URL>"
+cd /Volumes/work/Workspace/VideoHunter && python main.py fetch "<BVID或URL>"
 ```
 - 命令返回 JSON，包含 `meta`（元数据）和 `subtitle`（字幕）
 - 检查 `subtitle.found` 字段
@@ -57,7 +57,7 @@ cd /Volumes/work/Workspace/VedioHunter && python main.py fetch "<BVID或URL>"
 - **如果 `subtitle.found == true`**: 直接使用 `subtitle.text` 作为视频完整文本。报告"已获取字幕文本"
 - **如果 `subtitle.found == false`**: 需要音频转写兜底：
   ```bash
-  cd /Volumes/work/Workspace/VedioHunter && python main.py transcribe "<BVID>"
+  cd /Volumes/work/Workspace/VideoHunter && python main.py transcribe "<BVID>"
   ```
   **注意**: 这一步在 CPU 上运行较慢（约等于视频时长），提前告知用户预计等待时间
 
@@ -124,7 +124,7 @@ cd /Volumes/work/Workspace/VedioHunter && python main.py fetch "<BVID或URL>"
 
 可调用：
 ```bash
-cd /Volumes/work/Workspace/VedioHunter && python -c "
+cd /Volumes/work/Workspace/VideoHunter && python -c "
 from src.markdown_archiver import update_topic_index
 path = update_topic_index('<主题名>')
 print(f'汇总表已更新: {path}')
@@ -139,7 +139,7 @@ print(f'汇总表已更新: {path}')
 
 ## 约束
 
-- 所有命令在项目根目录 `/Volumes/work/Workspace/VedioHunter` 下运行
+- 所有命令在项目根目录 `/Volumes/work/Workspace/VideoHunter` 下运行
 - 不调用任何付费外部 API
 - 内容分析完全依赖你自己的 LLM 能力，不外调
 - 归档目录结构：`output/<主题名>/<BVID>.md` + `output/<主题名>/_index.md`

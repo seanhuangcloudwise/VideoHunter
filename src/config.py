@@ -1,4 +1,4 @@
-"""VedioHunter 全局配置."""
+"""VideoHunter 全局配置."""
 
 import os
 from pathlib import Path

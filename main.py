@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-VedioHunter CLI — Agent 调用的底层命令行接口。
+VideoHunter CLI — Agent 调用的底层命令行接口。
 
 用法:
   python main.py search <关键词> [--limit N]
@@ -65,7 +65,7 @@ def cmd_transcribe(args):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="VedioHunter CLI")
+    parser = argparse.ArgumentParser(description="VideoHunter CLI")
     sub = parser.add_subparsers(dest="command")
 
     # search
